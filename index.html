@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lectures</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#004d40">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #121212;
+            min-height: 100vh;
+            color: white;
+        }
+
+        .header {
+            background: #004d40;
+            padding: 20px;
+            text-align: center;
+            border-bottom: 3px solid #00332a;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: #004d40;
+            border: 3px solid #1de9b6;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-size: 40px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .container {
+            padding: 20px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .section {
+            background: #1e1e1e;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #1de9b6;
+            font-size: 1.3rem;
+        }
+
+        .day-schedule {
+            background: #2d2d2d;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+
+        .day-name {
+            font-weight: bold;
+            color: #1de9b6;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .lecture-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        input, select {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            background: #3d3d3d;
+            color: white;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-add { background: #1de9b6; color: #004d40; }
+        .btn-save { background: #2196F3; color: white; }
+        .btn-timer { background: #ff9800; color: white; font-size: 1.2rem; }
+
+        .lecture-item {
+            background: #3d3d3d;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .timer-display {
+            text-align: center;
+            font-size: 3rem;
+            font-weight: bold;
+            color: #ff9800;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1de9b6;
+            color: #004d40;
+            padding: 15px 30px;
+            border-radius: 10px;
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">ZNU</div>
+        <h1>Lectures</h1>
+    </div>
+
+    <div class="container">
+        <!-- جدول الأسبوع -->
+        <div class="section">
+            <h2>📅 جدول المحاضرات الأسبوعي</h2>
+            <div id="scheduleContainer"></div>
+            <button class="btn btn-save" onclick="saveSchedule()">💾 حفظ الجدول</button>
+        </div>
+
+        <!-- مؤقت التسجيل -->
+        <div class="section">
+            <h2>⏱️ مؤقت المحاضرة الحالية</h2>
+            <div class="timer-display" id="timer">00:00:00</div>
+            <input type="text" id="currentLecture" placeholder="اسم المحاضرة الحالية" style="width:100%; margin-bottom:10px;">
+            <button class="btn btn-timer" id="startBtn" onclick="startTimer()">▶️ بدء</button>
+            <button class="btn btn-timer" id="stopBtn" onclick="stopTimer()" style="display:none; background:#f44336;">⏹️ إيقاف</button>
+        </div>
+
+        <!-- التنبيهات القادمة -->
+        <div class="section">
+            <h2>🔔 المحاضرات القادمة اليوم</h2>
+            <div id="todayLectures"></div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        let schedule = JSON.parse(localStorage.getItem('schedule')) || {};
+        let timerInterval, startTime, elapsedTime = 0, isRunning = false;
+
+        // إنشاء الجدول
+        function initSchedule() {
+            const container = document.getElementById('scheduleContainer');
+            container.innerHTML = '';
+            
+            days.forEach(day => {
+                if (!schedule[day]) schedule[day] = [];
+                
+                const dayDiv = document.createElement('div');
+                dayDiv.className = 'day-schedule';
+                dayDiv.innerHTML = `
+                    <div class="day-name">${day}</div>
+                    <div id="lectures-${day}"></div>
+                    <div class="lecture-input">
+                        <input type="text" id="name-${day}" placeholder="اسم المحاضرة">
+                        <input type="time" id="time-${day}">
+                        <button class="btn btn-add" onclick="addLecture('${day}')" style="width:auto; margin:0;">+</button>
+                    </div>
+                `;
+                container.appendChild(dayDiv);
+                renderDayLectures(day);
+            });
+        }
+
+        function addLecture(day) {
+            const name = document.getElementById(`name-${day}`).value;
+            const time = document.getElementById(`time-${day}`).value;
+            
+            if (name && time) {
+                schedule[day].push({ name, time, id: Date.now() });
+                document.getElementById(`name-${day}`).value = '';
+                document.getElementById(`time-${day}`).value = '';
+                renderDayLectures(day);
+                saveSchedule();
+            }
+        }
+
+        function renderDayLectures(day) {
+            const container = document.getElementById(`lectures-${day}`);
+            container.innerHTML = schedule[day].map(l => `
+                <div class="lecture-item">
+                    <span>${l.name} - ${l.time}</span>
+                    <button onclick="removeLecture('${day}', ${l.id})" style="background:#f44336; color:white; border:none; padding:5px 10px; border-radius:5px;">حذف</button>
+                </div>
+            `).join('');
+        }
+
+        function removeLecture(day, id) {
+            schedule[day] = schedule[day].filter(l => l.id !== id);
+            renderDayLectures(day);
+            saveSchedule();
+        }
+
+        function saveSchedule() {
+            localStorage.setItem('schedule', JSON.stringify(schedule));
+            showNotification('✅ تم حفظ الجدول');
+        }
+
+        // المؤقت
+        function startTimer() {
+            if (!isRunning) {
+                startTime = Date.now() - elapsedTime;
+                timerInterval = setInterval(() => {
+                    elapsedTime = Date.now() - startTime;
+                    document.getElementById('timer').textContent = formatTime(elapsedTime);
+                }, 1000);
+                isRunning = true;
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+            }
+        }
+
+        function stopTimer() {
+            if (isRunning) {
+                clearInterval(timerInterval);
+                isRunning = false;
+                document.getElementById('startBtn').style.display = 'block';
+                document.getElementById('stopBtn').style.display = 'none';
+                
+                const name = document.getElementById('currentLecture').value || 'محاضرة بدون اسم';
+                const lectures = JSON.parse(localStorage.getItem('lecturesHistory')) || [];
+                lectures.push({
+                    name,
+                    duration: formatTime(elapsedTime),
+                    date: new Date().toLocaleDateString('ar-EG')
+                });
+                localStorage.setItem('lecturesHistory', JSON.stringify(lectures));
+                
+                elapsedTime = 0;
+                document.getElementById('timer').textContent = '00:00:00';
+                document.getElementById('currentLecture').value = '';
+                showNotification('✅ تم حفظ المحاضرة');
+            }
+        }
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+        }
+
+        // التنبيهات
+        function checkTodayLectures() {
+            const today = days[new Date().getDay()];
+            const todayLectures = schedule[today] || [];
+            const container = document.getElementById('todayLectures');
+            
+            if (!todayLectures.length) {
+                container.innerHTML = '<p style="color:#888;">لا توجد محاضرات اليوم</p>';
+                return;
+            }
+            
+            todayLectures.sort((a,b) => a.time.localeCompare(b.time));
+            
+            container.innerHTML = todayLectures.map(l => {
+                const lectureTime = new Date();
+                const [hours, minutes] = l.time.split(':');
+                lectureTime.setHours(hours, minutes, 0);
+                const now = new Date();
+                const diff = lectureTime - now;
+                const isUpcoming = diff > 0 && diff < 3600000;
+                return `
+                    <div class="lecture-item" style="${isUpcoming ? 'border:2px solid #1de9b6;' : ''}">
+                        <div>
+                            <div style="font-weight:bold;">${l.name}</div>
+                            <div style="color:#888; font-size:0.9rem;">${l.time}</div>
+                        </div>
+                        ${isUpcoming ? '<span style="color:#1de9b6;">🔔 قريباً</span>' : ''}
+                    </div>
+                `;
+            }).join('');
+
+            checkNotifications(todayLectures);
+        }
+
+        function checkNotifications(lectures) {
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            lectures.forEach(l => {
+                if (l.time === currentTime && now.getSeconds() < 10) {
+                    showNotification(`🚨 بدأت محاضرة: ${l.name}`);
+                    if ('vibrate' in navigator) navigator.vibrate([200,100,200]);
+                }
+            });
+        }
+
+        function showNotification(msg) {
+            const notif = document.getElementById('notification');
+            notif.textContent = msg;
+            notif.style.display = 'block';
+            setTimeout(() => notif.style.display = 'none', 3000);
+        }
+
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        initSchedule();
+        checkTodayLectures();
+        setInterval(checkTodayLectures, 60000);
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
